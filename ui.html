@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KAIROS — Cyclical Anomaly Detection</title>
+<style>
+  :root { --bg:#f6f7f9; --panel:#fff; --ink:#1a1a1a; --muted:#666;
+          --accent:#0a4d8c; --soft:#e8f0f8; --good:#2d6a2d;
+          --warn:#b00020; --rule:#e0e0e0; --mono:"SF Mono",Menlo,monospace; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);line-height:1.55;
+       font-family:"Charter",Georgia,serif}
+  header{background:var(--panel);border-bottom:1px solid var(--rule);
+         padding:1.4em 2em}
+  header h1{margin:0;font-size:1.7em;color:var(--accent)}
+  header p{margin:.3em 0 0;color:var(--muted);font-size:.95em}
+  main{max-width:1200px;margin:0 auto;padding:2em;
+       display:grid;grid-template-columns:1fr 1fr;gap:1.5em}
+  @media(max-width:900px){main{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--rule);
+         border-radius:8px;padding:1.4em 1.5em}
+  .panel h2{margin:0 0 .6em;font-size:1.1em;color:var(--accent);
+            border-bottom:1px solid var(--rule);padding-bottom:.4em}
+  .full{grid-column:1/-1}
+  textarea{width:100%;min-height:100px;font-family:var(--mono);font-size:.8em;
+           padding:.6em;border:1px solid var(--rule);border-radius:4px;
+           background:#fafafa;resize:vertical}
+  label{display:block;margin:.4em 0;font-size:.92em}
+  input[type=number],input[type=text]{font-family:var(--mono);width:9em;
+           padding:.3em .4em;border:1px solid var(--rule);border-radius:3px}
+  button{background:var(--accent);color:#fff;border:0;border-radius:4px;
+         padding:.7em 1.4em;font-weight:600;cursor:pointer;margin-top:.8em}
+  button:disabled{background:var(--muted);cursor:wait}
+  .err{color:var(--warn);font-family:var(--mono);font-size:.85em;
+       margin-top:.8em;padding:.6em;background:#fdecee;
+       border-left:3px solid var(--warn);border-radius:3px}
+  .hidden{display:none}
+  .stat{background:var(--soft);border-radius:6px;padding:.8em 1em;margin:.4em 0}
+  .stat .l{font-size:.72em;text-transform:uppercase;letter-spacing:.08em;
+           color:var(--muted)}
+  .stat .v{font-family:var(--mono);font-size:1.05em;font-weight:600;
+           color:var(--accent);word-break:break-all}
+  table{border-collapse:collapse;width:100%;font-size:.88em;margin:.6em 0}
+  th,td{border-bottom:1px solid var(--rule);padding:.35em .5em;text-align:left}
+  th{background:#f4f6f8;font-weight:600}
+  canvas{width:100%;height:280px;border:1px solid var(--rule);
+         border-radius:4px;background:#fff}
+  .mono{font-family:var(--mono);font-size:.88em}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>KAIROS</h1>
+  <p>Cyclical null-space anomaly detection with Bayes-threshold window
+     localisation and quantum amplitude estimation.</p>
+</header>
+
+<main>
+
+  <section class="panel full">
+    <h2>1. Series and cycle stack</h2>
+    <label>Time series (comma-separated, uniformly sampled):</label>
+    <textarea id="series"></textarea>
+    <label>Time grid (comma-separated, same length):</label>
+    <textarea id="tgrid"></textarea>
+    <label>Cycle stack (JSON array of CycleSpec):</label>
+    <textarea id="cycles"></textarea>
+    <label>
+      κ (window width in product-σ): <input id="kappa" type="number" value="2.0" step="0.1">
+      &nbsp; threshold: <input id="threshold" type="number" value="0.05" step="0.01">
+      &nbsp; QAE eval qubits: <input id="qae" type="number" value="6" step="1" min="2" max="20">
+    </label>
+    <div><button id="run">Run detection</button></div>
+    <div id="err" class="err hidden"></div>
+  </section>
+
+  <section class="panel">
+    <h2>2. Result</h2>
+    <div id="summary"></div>
+  </section>
+
+  <section class="panel">
+    <h2>3. Cycle diagnostics</h2>
+    <table id="cyc-table">
+      <thead><tr><th>Cycle</th><th>T</th><th>threshold</th><th>window</th><th>A'</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section class="panel full">
+    <h2>4. Series, baseline, residual, window</h2>
+    <canvas id="chart" width="1200" height="320"></canvas>
+  </section>
+
+  <section class="panel full">
+    <h2>5. Hand-off payload</h2>
+    <pre id="handoff" class="mono" style="background:#fafafa;border:1px solid var(--rule);border-radius:4px;padding:.8em;overflow-x:auto;max-height:22em;"></pre>
+  </section>
+
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+
+  // Synthetic example: Gaussian pulses per cycle, small noise, one anomaly.
+  function seed() {
+    const T = 90.0;
+    const n = 400;
+    const t = Array.from({length: n}, (_, i) => i * (3 * T) / n);
+
+    const muL = -0.5 * T, sigmaL = 0.25 * T;
+    const muT = +0.5 * T, sigmaT = 0.25 * T;
+    const amplitude = 55.0;
+
+    const baseline = t.map(ti => {
+      const frac = ti / T;
+      const wrapped = ((frac + 0.5) % 1.0 - 0.5) * T;
+      return amplitude
+        * Math.exp(-((wrapped - muL) ** 2) / (2 * sigmaL ** 2))
+        * Math.exp(-((wrapped - muT) ** 2) / (2 * sigmaT ** 2));
+    });
+
+    const noise = t.map(ti => 0.02 * Math.sin(7 * 2 * Math.PI * ti / T));
+
+    const spike = t.map(ti => (ti > 105 && ti < 115) ? 0.3 : 0.0);
+
+    const series = t.map((_, i) => +(baseline[i] + noise[i] + spike[i]).toFixed(4));
+
+    $('series').value = series.join(', ');
+    $('tgrid').value = t.map(x => +x.toFixed(3)).join(', ');
+    $('cycles').value = JSON.stringify([{
+      name: "quarterly", period: T, phase0: 0,
+      mu_L: muL, sigma_L: sigmaL,
+      mu_T: muT, sigma_T: sigmaT,
+      amplitude: amplitude
+    }], null, 2);
+  }
+  seed();
+
+  function parseList(s) {
+    return s.split(',').map(x => parseFloat(x.trim())).filter(x => !isNaN(x));
+  }
+
+  async function run() {
+    const err = $('err');
+    err.classList.add('hidden');
+    $('run').disabled = true;
+
+    try {
+      const body = {
+        series: parseList($('series').value),
+        t: parseList($('tgrid').value),
+        cycles: JSON.parse($('cycles').value),
+        kappa: parseFloat($('kappa').value),
+        threshold: parseFloat($('threshold').value),
+        qae_eval_qubits: parseInt($('qae').value, 10),
+      };
+      const r = await fetch('/api/detect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({detail: r.status}));
+        throw new Error(e.detail || r.status);
+      }
+      const data = await r.json();
+      render(data, body);
+    } catch (e) {
+      err.textContent = e.message || String(e);
+      err.classList.remove('hidden');
+    } finally {
+      $('run').disabled = false;
+    }
+  }
+
+  function render(data, req) {
+    const a = data.amplitude;
+    $('summary').innerHTML = `
+      <div class="stat"><div class="l">Flagged</div>
+        <div class="v">${data.flagged ? 'YES' : 'no'}</div></div>
+      <div class="stat"><div class="l">Classical amplitude</div>
+        <div class="v">${a.classical.toFixed(5)}</div></div>
+      <div class="stat"><div class="l">Quantum amplitude</div>
+        <div class="v">${a.quantum.toFixed(5)}</div></div>
+      <div class="stat"><div class="l">Backend</div>
+        <div class="v">${a.backend}</div></div>
+      <div class="stat"><div class="l">Window (cycle-local)</div>
+        <div class="v">[${data.window.lo.toFixed(2)}, ${data.window.hi.toFixed(2)}]</div></div>
+    `;
+
+    const tb = document.querySelector('#cyc-table tbody');
+    tb.innerHTML = '';
+    data.cycles.forEach(c => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="mono">${c.name}</td>
+        <td class="mono">${c.period.toFixed(2)}</td>
+        <td class="mono">${c.threshold.toFixed(3)}</td>
+        <td class="mono">[${c.window_lo.toFixed(2)}, ${c.window_hi.toFixed(2)}]</td>
+        <td class="mono">${c.product_amplitude.toFixed(4)}</td>`;
+      tb.appendChild(tr);
+    });
+
+    $('handoff').textContent = JSON.stringify(data, null, 2);
+    drawChart(req.series, req.t, data);
+  }
+
+  function drawChart(series, t, data) {
+    const cv = $('chart');
+    const ctx = cv.getContext('2d');
+    const W = cv.width, H = cv.height;
+    const pad = {l: 50, r: 20, t: 20, b: 40};
+    ctx.clearRect(0, 0, W, H);
+
+    const xmin = Math.min(...t), xmax = Math.max(...t);
+    const ymin = Math.min(...series, 0), ymax = Math.max(...series, 0);
+    const sx = x => pad.l + (x - xmin) / (xmax - xmin) * (W - pad.l - pad.r);
+    const sy = y => H - pad.b - (y - ymin) / (ymax - ymin) * (H - pad.t - pad.b);
+
+    const T = data.cycles[0].period;
+    const wlo = data.window.lo, whi = data.window.hi;
+    ctx.fillStyle = 'rgba(10,77,140,0.08)';
+    for (let k = Math.floor(xmin / T) - 1; k <= Math.ceil(xmax / T) + 1; k++) {
+      const gLo = k * T + wlo;
+      const gHi = k * T + whi;
+      const xLo = Math.max(sx(gLo), pad.l);
+      const xHi = Math.min(sx(gHi), W - pad.r);
+      if (xHi > xLo) {
+        ctx.fillRect(xLo, pad.t, xHi - xLo, H - pad.t - pad.b);
+      }
+    }
+
+    ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l, sy(0)); ctx.lineTo(W - pad.r, sy(0)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, H - pad.b); ctx.stroke();
+
+    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    t.forEach((ti, i) => {
+      const x = sx(ti), y = sy(series[i]);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    ctx.strokeStyle = '#b00020'; ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 3]);
+    for (let k = Math.floor(xmin / T) - 1; k <= Math.ceil(xmax / T) + 1; k++) {
+      const gx = k * T + data.window.x_star;
+      if (gx >= xmin && gx <= xmax) {
+        ctx.beginPath();
+        ctx.moveTo(sx(gx), pad.t);
+        ctx.lineTo(sx(gx), H - pad.b);
+        ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#666'; ctx.font = '11px monospace';
+    ctx.fillText(`a = ${data.amplitude.classical.toFixed(4)}`, pad.l + 4, pad.t + 12);
+  }
+
+  $('run').onclick = run;
+  run();
+})();
+</script>
+</body>
+</html>

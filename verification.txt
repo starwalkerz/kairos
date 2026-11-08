@@ -1,0 +1,8 @@
+[PASS] Lemma 1: product Gaussian matches envelope (max abs diff < 1e-12)
+[PASS] Theorem 1: Bayes threshold at midpoint for symmetric cycle
+[PASS] Theorem 1: likelihoods equal at threshold (rel err < 1e-10)
+[PASS] Baseline periodic: b(t) = b(t + kT) for k=1,2
+[PASS] Window mask: cycle-local wrapping across multiple cycles
+[PASS] Detector: anomaly flagged (amplitude≈0.105)
+[PASS] Detector: anomaly not flagged (amplitude≈0.021)
+All assertions passed.

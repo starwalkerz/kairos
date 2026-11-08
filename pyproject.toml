@@ -1,0 +1,11 @@
+[project]
+name = "kairos"
+version = "1.1.0"
+description = "Cyclical null-space anomaly detection with Bayes thresholds and QAE"
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
