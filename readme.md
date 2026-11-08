@@ -34,6 +34,14 @@ null-space residual — which is where genuine anomalies live.
 
 KAIROS applies wherever a time series carries cyclical structure the operator already trusts, and the question is not whether a point is unusual but whether a deviation from the expected cycle is real, localised, and worth acting on. In manufacturing and process telemetry, batch cycles, shift patterns, and scheduled maintenance provide the cyclical prior, and the anomaly is a deviation in yield, temperature, or throughput that occurs inside a specific window of the cycle rather than at the peak. In procurement and inventory, seasonal demand and reorder intervals define the baseline, and the anomaly is a sudden deviation in ordering behaviour, supplier lead time, or stock depletion, flagged before it becomes a stockout. In clinical operations, admission patterns follow weekly and seasonal rhythms, and the anomaly is a cluster that departs from the expected cadence inside a defined window — distinguishable from the routine Monday surge only because the cycle is known. In financial market microstructure, intraday and weekly cycles are well characterised, and the anomaly is a liquidity or volatility deviation that falls within a computable interval rather than at the open or close. In web and application telemetry, traffic follows diurnal and weekly patterns, and the anomaly is a latency or error excursion inside the window that would otherwise be masked by the natural variability of peak hours. In industrial quality control, production schedules supply the cycle, and the anomaly is a defect cluster whose temporal signature would be lost against the peak of every legitimate run. In each case KAIROS returns not merely a flag but the window in which the anomaly was localised, the residual amplitude relative to the declared baseline, and a structured payload that any downstream system — a decision engine, a causality analyser, an alerting pipeline, or an orchestrator reconciling multiple signals — can consume without further transformation.
 
+FAIR WARNING: WEAKNESSES:
+
+DATA BLINDNESS: The codebase does no input auditing or sanitization. Passing data strings containing NaNs, missing intervals, or structural gaps will cascade through the root-finding step and break the calculation layer
+
+PHASE DEPENDENCY: If an enterprise deployment experiences a slight clock or shift drift, the code will continue to execute beautifully and output well-formed anomaly reports—but it will be calculating them against a fundamentally corrupted residual background.
+
+THESE WEAKNESSES ARE WHY THE SOFTWARE IS INTENDED AS A RESEARCH PROJECT, AND NOT IN PRODUCTION!
+
 ---
 
 ## 2. Mathematical specification
