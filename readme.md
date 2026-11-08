@@ -14,6 +14,23 @@ KAIROS is standalone. It assumes nothing about where the data comes from or
 where the report goes. It exposes a REST API, a WebSocket stream, a
 command-line interface, and a plug-in adapter layer.
 
+# Degen view:
+
+# KAIROS — The Null-Space Session Noise Filter
+
+A hyper-efficient, ultra-low-latency statistical filter engineered as a direct mathematical antidote to power-hungry, non-deterministic machine learning anomaly detectors. Standard ML models burn massive data-center compute trying to "learn" cycles. KAIROS uses a strict human contract: you supply the exact intraday session harmonics (funding rate payment waves, session opens, settlement clips), and the math flattens the baseline instantly.
+
+## 🧠 Core Mechanics
+- **Asymmetric Prior Subtraction (Lemma 1):** Parameterizes distinct leading Gaussians (acceleration phase) and trailing Gaussians (decay phase) to cleanly capture the violent, non-linear liquidity surges of market opens (e.g., London/NY overlap). It multiplies these shifting standard normal distributions, analytically completing the square in the exponent to collapse the wave into a single, sharpened product-Gaussian curve.
+- **O(1) Bayes Gating (Theorem 1):** Solves an analytical log-likelihood ratio in microseconds on a standard CPU core to locate the exact, unique root where the signal and noise densities intersect, completely bypassing iterative ML gradient descent.
+- **The Asynchronous Phone-Home Session:** Isolation of the remaining null-space residual ($\vert r_W \rangle$) to focus 100% of calculation resolution on the critical phase-change window. The quantum backend (`quantum_backend.py`) is written natively via `qiskit_iqm` to offload targeted Quantum Amplitude Estimation (QAE) tasks to a remote physical IQM processor on Earth, returning a verified anomaly amplitude with strict Brassard bounds before falling back cleanly to local classical `NumPy` matrices.
+
+## ⚠️ Documented Weaknesses (The Hand-off)
+- **Data Blindness:** The calculation pipeline does zero input data sanitization. Passing data strings containing `NaNs`, missing intervals, or structural gaps will instantly crash the root-finding step and break the engine.
+- **Phase Dependency:** If your exchange WebSocket experiences a slight clock drift, the engine will continue to run beautifully and output well-formed reports—calculated against a fundamentally corrupted baseline.
+- **Status:** Research framework. Zero corporate hand-holding. If your data is messy, it will flawlessly calculate a catastrophic crash.
+
+
 ---
 
 ## 1. Why this module exists
